@@ -115,7 +115,7 @@ func TestRBTreeInsertCase31(t *testing.T) {
 	//     5(r)
 	//    /
 	//   4(r)
-	// 对照usfca的数据结构可视化进行对照
+	// 可以通过usfca的数据结构可视化来进行验证
 	// https://www.cs.usfca.edu/~galles/visualization/RedBlack.html
 	rbt := NewRBTree[int, int]()
 	rbt.insert(10, 0)
