@@ -88,37 +88,44 @@ func (rbt *RBTree[K, V]) createNode(key K, value V) *node[K, V] {
 	}
 }
 
-func (rbt *RBTree[K, V]) search(key K) *node[K, V] {
+func (rbt *RBTree[K, V]) search(key K) (prev, target *node[K, V]) {
 	curNode := rbt.root
-	var prevNode *node[K, V] = nil
 	for curNode != rbt.leaf {
-		prevNode = curNode
+		prev = curNode
 		if key < curNode.key {
 			curNode = curNode.left
-		} else {
+		} else if key > curNode.key {
 			curNode = curNode.right
+		} else {
+			prev = curNode.parent
+			target = curNode
+			return
 		}
 	}
-	return prevNode
+	return prev, nil
 }
 
 func (rbt *RBTree[K, V]) insert(key K, value V) {
-	node := rbt.createNode(key, value)
 	if rbt.root == nil {
+		node := rbt.createNode(key, value)
 		node.color = black
 		rbt.root = node
 
 	} else {
-		parent := rbt.search(key)
+		parent, target := rbt.search(key)
+		if target != nil {
+			target.value = value
+			return
+		}
+		node := rbt.createNode(key, value)
 		node.parent = parent
-
 		if node.key < parent.key {
 			parent.left = node
 		} else {
 			parent.right = node
 		}
+		rbt.insertAdjust(node)
 	}
-	rbt.insertAdjust(node)
 	rbt.size++
 }
 
@@ -253,4 +260,149 @@ func (rbt *RBTree[K, V]) leftRotate(n *node[K, V]) {
 
 	n.parent = right
 	right.left = n
+}
+
+func (rbt *RBTree[K, V]) delete(key K) bool {
+	parent, target := rbt.search(key)
+	if target == nil {
+		return false
+	}
+
+	var isLeft bool
+
+	// case 1: 不存在子节点，直接删除
+	//               50(b)
+	//         /             \
+	//       20(b)          80(b)
+	//    /        \        /   \
+	//  13(r)     25(r)   leaf leaf
+	//  /   \     /   \
+	// leaf leaf leaf leaf
+	// 删除 80(b)
+	if target.left == rbt.leaf && target.right == rbt.leaf {
+		if parent == nil {
+			rbt.root = nil
+		} else if parent.left == target {
+			parent.left = rbt.leaf
+			isLeft = true
+		} else {
+			isLeft = false
+			parent.right = rbt.leaf
+		}
+	} else if target.left == rbt.leaf {
+		// case 2: 删除节点只有一个子节点，替换为子节点，如果子节点仍有子节点
+		// 相当于转换为case2 或者 case3继续向下进行，总能替换为case1
+		// 但是根据红黑树的约束，如果删除节点只有一个子节点，那么子节点一定不存在子节点
+		// left = rbt.leaf则存在右子节点
+		//            25(b)
+		//        /         \
+		//      20(b)      50(b)
+		//    /      \     /   \
+		//  13(r)   leaf leaf leaf
+		//  /   \
+		// leaf leaf
+		// delete(20)
+		rbt.exchange(target, target.right)
+		isLeft = false
+	} else if target.right == rbt.leaf {
+		rbt.exchange(target, target.left)
+		isLeft = true
+	} else {
+		// case 3: 左右子节点都存在，查找后继(前驱)节点
+		// 后继节点（前驱节点）可能 右（左）子节点
+		s := rbt.precursor(target)
+		//                50(b)
+		//         /              \
+		//       20(b)           75(b)
+		//    /        \        /    \
+		//  13(b)     25(b)   60(b)  80(r)
+		// 			   		   \
+		// 			 		   65(r)
+		// delete(20)
+		// s = 25(r)
+		target.key = s.key
+		target.value = s.value
+
+		target = s
+	}
+
+	// 如果被删除的替换节点颜色是黑色则需要调整
+	if target.color == black {
+		rbt.deleteAdjust(target, isLeft)
+	}
+	// 删除替换节点
+	if target.parent == nil {
+		rbt.root = nil
+	} else if target.parent.left == target {
+		target.parent.left = rbt.leaf
+	} else {
+		target.parent.right = rbt.leaf
+	}
+
+	// 替换节点只可能存在一个子节点
+	if target.left != rbt.leaf {
+		rbt.exchange(target, target.left)
+	} else if target.right != rbt.leaf {
+		rbt.exchange(target, target.right)
+	}
+
+	target.parent = nil
+	target.left = nil
+	target.right = nil
+
+	rbt.size--
+	return true
+}
+
+func (rbt *RBTree[K, V]) exchange(a, b *node[K, V]) {
+	if a.parent == nil {
+		rbt.root = b
+	} else if a == a.parent.left {
+		a.parent.left = b
+	} else {
+		a.parent.right = b
+	}
+	if b != nil {
+		b.parent = a.parent
+	}
+}
+
+func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V], isLeft bool) {
+}
+
+func (rbt *RBTree[K, V]) precursor(n *node[K, V]) *node[K, V] {
+	// 比n小的最大节点
+	// 有左子树，前驱节点就是左子树的最右节点
+	if n.left != rbt.leaf {
+		cur := n.left
+		for cur.right != rbt.leaf {
+			cur = cur.right
+		}
+		return cur
+	}
+	// 没有左子树，前驱节点的右节点为该节点的父节点或祖父节点
+	p := n.parent
+	for p != rbt.leaf && n == p.left {
+		n = p
+		p = p.parent
+	}
+	return p
+}
+
+func (rbt *RBTree[K, V]) successor(n *node[K, V]) *node[K, V] {
+	// 比n大的最小节点
+	if n.right != rbt.leaf {
+		cur := n.right
+		for cur.left != rbt.leaf {
+			cur = cur.left
+		}
+		return cur
+	}
+	p := n.parent
+	for p != rbt.leaf && n == p.right {
+		n = p
+		p = p.parent
+	}
+
+	return p
 }

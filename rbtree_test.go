@@ -10,42 +10,182 @@ import (
 
 func (c color) String() string {
 	if c == 0 {
-		return "red"
+		return "r"
 	}
-	return "black"
+	return "b"
 }
 
+/**
+                 15(b)
+           /                  \
+        22(b)                22(b)
+	  /      \             /	   \
+   20(r)    20(r)       20(r)     20(r)
+   /  \    	/   \
+leaf leaf leaf leaf
+
+一个子节点最长长度 - 自身长度的1/2，即为该节点的空格长度
+*/
 func (n *node[K, V]) String() string {
 	return fmt.Sprintf("key=%v, value=%v, parent=%v, left=%v, right=%v, color=%v",
 		n.key, n.value, unsafe.Pointer(n.parent), unsafe.Pointer(n.left), unsafe.Pointer(n.right), n.color)
 }
 
-func String(rbt *RBTree[int, int]) string {
+type printTree struct {
+	str   string
+	left  *printTree
+	right *printTree
+	x     int
+	level int
+}
 
+type printRoot struct {
+	root *printTree
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func String(rbt *RBTree[int, int]) string {
+	levelX := make([]int, 1000)
+	l := 0
+	var initPrintTree func(*node[int, int], int) *printTree
+	initPrintTree = func(n *node[int, int], level int) *printTree {
+		if n == nil {
+			l = max(level-1, l)
+			return nil
+		}
+
+		left := initPrintTree(n.left, level+1)
+		right := initPrintTree(n.right, level+1)
+
+		p := new(printTree)
+
+		if n == rbt.leaf {
+			p.str = "leaf"
+		} else {
+			p.str = strconv.Itoa(n.key) + "(" + n.color.String() + ")"
+		}
+		p.left = left
+		p.right = right
+		p.level = level
+		return p
+	}
+
+	var generateCoor func(*printTree)
+
+	pt := initPrintTree(rbt.root, 0)
+	generateCoor = func(p *printTree) {
+		if p == nil {
+			return
+		}
+		if levelX[p.level] < 0 {
+			for i := 0; i < p.level; i++ {
+				levelX[p.level] = -levelX[p.level]
+			}
+			generateCoor(pt)
+			return
+		}
+		generateCoor(p.left)
+		generateCoor(p.right)
+
+		var px int
+		if p.left != nil && p.right != nil {
+			px = max((p.right.x+p.left.x)/2, 1)
+		} else if p.left != nil {
+			px = p.left.x + len(p.left.str)/2 + 1
+		} else if p.right != nil {
+			px = max(p.right.x+len(p.right.str)/2+1, levelX[p.level]+len(p.str)/2)
+		} else {
+			px = levelX[p.level]
+		}
+
+		if p.level > 0 && px+len(p.str)/2 <= levelX[p.level] {
+
+			if p.left != nil {
+				levelX[p.level+1] = levelX[p.level] - len(p.left.str)/2 + 1
+			} else {
+				levelX[p.level+1] = levelX[p.level] - len(p.str)/2 + 1
+			}
+
+			generateCoor(p)
+			if p.left != nil && p.right != nil {
+				px = max((p.right.x+p.left.x)/2, 1)
+			} else if p.left != nil {
+				px = p.left.x + len(p.left.str)/2
+			} else if p.right != nil {
+				px = p.right.x + len(p.right.str)/2
+			} else {
+				px = levelX[p.level] + 1
+			}
+		}
+		p.x = px
+		if p.right != nil {
+			levelX[p.level] = max(p.right.x+len(p.right.str)+1, px+len(p.str)+1)
+		} else {
+			if p.left != nil {
+				levelX[p.level] = px + max(len(p.left.str)/2, len(p.str)) + 1
+			} else {
+				levelX[p.level] = px + len(p.str) + 1
+			}
+		}
+	}
+
+	generateCoor(pt)
+
+	que := make([]*printTree, 0, rbt.size)
 	sb := strings.Builder{}
-	root := rbt.root
-	que := make([]*node[int, int], 0, rbt.size)
-	que = append(que, root)
+	que = append(que, pt)
 	for len(que) != 0 {
 		cnt := len(que)
+		curX := 0
+		curS := 0
+		tmpB := strings.Builder{}
 		for i := 0; i < cnt; i++ {
 			n := que[0]
 			que = que[1:]
-			if n == rbt.leaf {
-				sb.WriteString("leaf    ")
-				continue
+			if n.x <= curX {
+				n.x += (curX - n.x) + 1
 			}
-			sb.WriteString(strconv.Itoa(n.key))
-			sb.WriteString("(" + n.color.String() + ")")
-			sb.WriteString(strings.Repeat(" ", 5))
+			sb.WriteString(strings.Repeat(" ", n.x-curX))
+			sb.WriteString(n.str)
+			curX = n.x + len(n.str)
+
 			if n.left != nil {
+				tmpB.WriteString(strings.Repeat(" ", n.left.x-curS+len(n.left.str)/2))
+				if n.left.x != n.x {
+					tmpB.WriteString("/")
+				} else {
+					tmpB.WriteString("|")
+				}
+				curS += n.left.x - curS + len(n.left.str)/2 + 1
 				que = append(que, n.left)
 			}
 			if n.right != nil {
+				tmpB.WriteString(strings.Repeat(" ", n.right.x-curS+len(n.right.str)/2-1))
+				if n.right.x != n.x {
+					tmpB.WriteString("\\")
+				} else {
+					tmpB.WriteString("|")
+				}
+				curS += n.right.x - curS + len(n.right.str)/2
+
 				que = append(que, n.right)
 			}
 		}
 		sb.WriteString("\n")
+		sb.WriteString(tmpB.String() + "\n")
 	}
 	return sb.String()
 }
@@ -133,13 +273,52 @@ func TestRBTreeInsertCase31(t *testing.T) {
 
 func TestRBTreeInsertCase32(t *testing.T) {
 	rbt := NewRBTree[int, int]()
-	rbt.insert(10, 0)
-	rbt.insert(15, 0)
-	rbt.insert(20, 0)
+	rbt.insert(1354444, 0)
+	rbt.insert(23223453334, 0)
+	rbt.insert(52553453, 0)
 	fmt.Println(String(rbt))
 
 	rbt.insert(25, 0)
 	fmt.Println(String(rbt))
+	rbt.insert(123100823, 0)
+	rbt.insert(13670065221, 0)
+	rbt.insert(1436340053, 0)
+	//rbt.insert(13, 0)
+
+	fmt.Println(String(rbt))
+}
+
+func TestRBTreeDeleteCase1And2(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	rbt.insert(50, 0)
+	rbt.insert(25, 0)
+	rbt.insert(75, 0)
+	rbt.insert(13, 0)
+	rbt.insert(20, 0)
+	fmt.Println(String(rbt))
+
+	rbt.delete(25)
+	fmt.Println(String(rbt))
+
+	rbt.delete(20)
+	fmt.Println(String(rbt))
+
+}
+
+func TestRBTreeDeleteCase3(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	rbt.insert(20, 0)
+	rbt.insert(50, 0)
+	rbt.insert(25, 0)
+	rbt.insert(75, 0)
+	rbt.insert(80, 0)
+
+	rbt.insert(13, 0)
 	rbt.insert(22, 0)
 	fmt.Println(String(rbt))
+	//
+	rbt.delete(20)
+	fmt.Println(String(rbt))
+	//rbt.delete(50)
+	//fmt.Println(String(rbt))
 }
