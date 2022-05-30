@@ -15,17 +15,6 @@ func (c color) String() string {
 	return "b"
 }
 
-/**
-                 15(b)
-           /                  \
-        22(b)                22(b)
-	  /      \             /	   \
-   20(r)    20(r)       20(r)     20(r)
-   /  \    	/   \
-leaf leaf leaf leaf
-
-一个子节点最长长度 - 自身长度的1/2，即为该节点的空格长度
-*/
 func (n *node[K, V]) String() string {
 	return fmt.Sprintf("key=%v, value=%v, parent=%v, left=%v, right=%v, color=%v",
 		n.key, n.value, unsafe.Pointer(n.parent), unsafe.Pointer(n.left), unsafe.Pointer(n.right), n.color)
@@ -57,6 +46,15 @@ func min(a, b int) int {
 	return b
 }
 
+// 实现红黑树的简单可视化
+// 如：
+//            25(b)
+//        /         \
+//      20(b)      50(b)
+//    /      \     /   \
+//  13(r)   leaf leaf leaf
+//  /   \
+// leaf leaf
 func String(rbt *RBTree[int, int]) string {
 	levelX := make([]int, 1000)
 	l := 0
