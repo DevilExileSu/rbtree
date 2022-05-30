@@ -1,6 +1,7 @@
 package rbtree
 
 import (
+	"fmt"
 	"golang.org/x/exp/constraints"
 )
 
@@ -36,28 +37,39 @@ func (n *node[K, V]) changeColor() {
 	}
 }
 
-func (n *node[K, V]) getFather() *node[K, V] {
+func (n *node[K, V]) getParent() *node[K, V] {
 	return n.parent
 }
 
 func (n *node[K, V]) getGrandfather() *node[K, V] {
-	p := n.getFather()
+	p := n.getParent()
 	if p == nil {
 		return nil
 	}
-	return p.getFather()
+	return p.getParent()
 }
 
 func (n *node[K, V]) getUncle() *node[K, V] {
 	gp := n.getGrandfather()
 	if gp != nil {
-		if gp.left != n.getFather() {
+		if gp.left != n.getParent() {
 			return gp.left
 		} else {
 			return gp.right
 		}
 	}
 	return nil
+}
+
+func (n *node[K, V]) getSibling() *node[K, V] {
+	p := n.getParent()
+	if p == nil {
+		return nil
+	}
+	if p.left == n {
+		return p.right
+	}
+	return p.left
 }
 
 func NewRBTree[K constraints.Ordered, V any]() *RBTree[K, V] {
@@ -135,7 +147,7 @@ func (rbt *RBTree[K, V]) insertAdjust(n *node[K, V]) {
 		return
 	}
 	for n != rbt.root && n.parent.color != black {
-		p := n.getFather()
+		p := n.getParent()
 		if p.color == red {
 			gp := n.getGrandfather()
 			u := n.getUncle()
@@ -268,7 +280,7 @@ func (rbt *RBTree[K, V]) delete(key K) bool {
 		return false
 	}
 
-	var isLeft bool
+	// 先删除，后进行调整
 
 	// case 1: 不存在子节点，直接删除
 	//               50(b)
@@ -284,15 +296,17 @@ func (rbt *RBTree[K, V]) delete(key K) bool {
 			rbt.root = nil
 		} else if parent.left == target {
 			parent.left = rbt.leaf
-			isLeft = true
 		} else {
-			isLeft = false
 			parent.right = rbt.leaf
+		}
+		if target.color == black {
+			rbt.leaf.parent = parent
+			target = rbt.leaf
 		}
 	} else if target.left == rbt.leaf {
 		// case 2: 删除节点只有一个子节点，替换为子节点，如果子节点仍有子节点
 		// 相当于转换为case2 或者 case3继续向下进行，总能替换为case1
-		// 但是根据红黑树的约束，如果删除节点只有一个子节点，那么子节点一定不存在子节点
+		// 但是根据红黑树的约束，单子树的节点绝对是黑色的，而其唯一子节点必然是红色的
 		// left = rbt.leaf则存在右子节点
 		//            25(b)
 		//        /         \
@@ -302,53 +316,69 @@ func (rbt *RBTree[K, V]) delete(key K) bool {
 		//  /   \
 		// leaf leaf
 		// delete(20)
+		// 修改右节点颜色为黑色
+		target.right.changeColor()
 		rbt.exchange(target, target.right)
-		isLeft = false
+		// 无需调整红黑树，直接返回
+		return true
 	} else if target.right == rbt.leaf {
+		// 修改左节点颜色为黑色
+		target.left.changeColor()
 		rbt.exchange(target, target.left)
-		isLeft = true
+		// 无需调整红黑树，直接返回
+		return true
 	} else {
 		// case 3: 左右子节点都存在，查找后继(前驱)节点
 		// 后继节点（前驱节点）可能 右（左）子节点
 		s := rbt.precursor(target)
-		//                50(b)
-		//         /              \
-		//       20(b)           75(b)
-		//    /        \        /    \
-		//  13(b)     25(b)   60(b)  80(r)
-		// 			   		   \
-		// 			 		   65(r)
+		//                   50(b)
+		//         /                    \
+		//       20(b)                 75(r)
+		//    /        \           /           \
+		//  13(r)     25(r)      60(b)        80(b)
+		//  /   \     /   \     /    \        /   \
+		// leaf leaf leaf leaf leaf 65(r)   leaf leaf
+		//                          /   \
+		//                        leaf leaf
 		// delete(20)
-		// s = 25(r)
+		// s = 13(r)
 		target.key = s.key
 		target.value = s.value
 
 		target = s
-	}
 
+		// 删除替换节点
+		if target.parent == nil {
+			rbt.root = nil
+		} else if target.parent.left == target {
+			target.parent.left = rbt.leaf
+		} else {
+			target.parent.right = rbt.leaf
+		}
+		// 如果替换节点是黑色的，那么父节点一定有两个子节点
+		rbt.leaf.parent = target.parent
+
+		// 替换节点只可能存在一个子节点
+		if target.left != rbt.leaf {
+			rbt.exchange(target, target.left)
+		} else if target.right != rbt.leaf {
+			rbt.exchange(target, target.right)
+		}
+		// 如果替换节点的颜色为黑色，则用叶子节点代替
+		if target.color == black {
+			target = rbt.leaf
+		}
+	}
+	//fmt.Println("target", target)
 	// 如果被删除的替换节点颜色是黑色则需要调整
 	if target.color == black {
-		rbt.deleteAdjust(target, isLeft)
-	}
-	// 删除替换节点
-	if target.parent == nil {
-		rbt.root = nil
-	} else if target.parent.left == target {
-		target.parent.left = rbt.leaf
-	} else {
-		target.parent.right = rbt.leaf
-	}
-
-	// 替换节点只可能存在一个子节点
-	if target.left != rbt.leaf {
-		rbt.exchange(target, target.left)
-	} else if target.right != rbt.leaf {
-		rbt.exchange(target, target.right)
+		rbt.deleteAdjust(target)
 	}
 
 	target.parent = nil
 	target.left = nil
 	target.right = nil
+	rbt.leaf.parent = nil
 
 	rbt.size--
 	return true
@@ -367,7 +397,139 @@ func (rbt *RBTree[K, V]) exchange(a, b *node[K, V]) {
 	}
 }
 
-func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V], isLeft bool) {
+func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V]) {
+
+	for n != rbt.root && n.color == black {
+		s := n.getSibling()
+		fmt.Println("sibling", s)
+		p := n.getParent()
+		fmt.Println("parent", p)
+		// 节点是左子节点
+		if p.left == n {
+			// case 2. 兄弟节点是红色
+			// delete(16), s=24(r), p=20(b), 变为case1.1 兄弟节点的子节点都是黑色
+			//         20(b)                          20(b)                            24(b)
+			//    /           \                   /         \                      /          \
+			//  16(b)        24(r)              leaf      24(r)                  20(r)       25(b)
+			//  /   \      /       \     =>            /        \        =>    /       \     /    \
+			// leaf leaf 23(b)    25(b)              23(b)     25(b)         leaf    23(b) leaf  leaf
+			//           /   \    /   \             /    \    /    \                /    \
+			//         leaf leaf leaf leaf         leaf leaf leaf leaf            leaf  leaf
+			if s.color == red {
+				// s设为黑色
+				s.changeColor()
+				// p设为红色
+				p.color = red
+				// p左旋
+				rbt.leftRotate(p)
+			}
+
+			// case 1.1 兄弟节点是黑色
+			if s.color == black {
+				// case 1.1 兄弟节点的子节点都是黑色
+				// delete(24), 将父节点23(r)作为当前节点继续向上调整红黑树
+				//         20(b)                             20(b)                             20(b)
+				//    /           \                      /           \                     /           \
+				//  16(b)        24(r)                 16(b)        23(r)                16(b)        23(r)
+				//  /   \      /       \     =>        /   \      /       \       =>     /   \      /       \
+				// leaf leaf 23(b)    25(b)           leaf leaf  leaf    25(b)         leaf leaf  leaf    25(r)
+				//           /   \    /   \                              /   \							  /   \
+				//         leaf leaf leaf leaf                         leaf  leaf                       leaf  leaf
+				if s.left.color == black && s.right.color == black {
+					// 将兄弟节点设为红色
+					s.changeColor()
+					// 把父节点作为要调整的节点，继续向上调整
+					n = n.parent
+					continue
+				}
+				// case 1.2 兄弟节点的右子节点是红色
+				// delete(10) s = 25(b), p = 20(b)
+				//        20(b)                         20(b)                          25(b)
+				//    /         \                    /        \                     /        \
+				//  10(b)      25(b)               leaf       25(b)               20(b)      30(b)
+				//  /   \     /    \        =>               /    \       =>     /    \      /   \
+				// leaf leaf leaf 30(r)                    leaf  30(r)         leaf  leaf  leaf  leaf
+				//                /   \                         /   \
+				//              leaf leaf                     leaf leaf
+				if s.right.color == red {
+					// s的颜色设为p的颜色，p黑色红色都有可能
+					s.color = p.color
+					// p设为黑色
+					p.color = black
+					// sr设为黑色
+					s.right.color = black
+					// p左旋
+					rbt.leftRotate(p)
+					// 调整结束
+					break
+				}
+
+				// case 1.3 兄弟节点的右子节点是黑色，左子节点是红色
+				// delete（20）, s=30(b), sl=25(r) 变为case1.2的情况，兄弟节点的右节点是黑色
+				//         20(b)                       10(b)                       10(b)
+				//    /           \                /           \                 /      \
+				//  10(b)        30(b)      =>   leaf         30(b)      =>    leaf     25(b)
+				//  /   \      /      \                      /    \                    /    \
+				// leaf leaf 25(r)   leaf                  25(r)  leaf               leaf   30(r)
+				//           /   \                         /   \                            /   \
+				//         leaf leaf                     leaf leaf                        leaf leaf
+				if s.right.color == black && s.left.color == red {
+					// s设为红色
+					s.changeColor()
+					// sl设为黑色
+					s.left.changeColor()
+					// s右旋
+					rbt.rightRotate(s)
+					// continue
+					continue
+				}
+			}
+
+		} else {
+			if s.color == red {
+				// s设为黑色
+				s.changeColor()
+				// p设为红色
+				p.color = red
+				// p右旋
+				rbt.rightRotate(p)
+			}
+
+			// 兄弟节点的子节点都是黑色
+			if s.left.color == black && s.right.color == black {
+				// 将兄弟节点设为红色
+				s.changeColor()
+				// 把父节点作为要调整的节点，继续向上调整
+				n = n.parent
+				continue
+			}
+			// 兄弟节点左子节点红色
+			if s.left.color == red {
+				// s的颜色设为p的颜色，p黑色红色都有可能
+				s.color = p.color
+				// p设为黑色
+				p.color = black
+				// sl设为黑色
+				s.left.color = black
+				// p右旋
+				rbt.rightRotate(p)
+				// 调整结束
+				break
+			}
+			// 兄弟节点的左子节点黑色，右子节点红色
+			if s.left.color == black && s.right.color == red {
+				// s设为红色
+				s.changeColor()
+				// s2设为黑色
+				s.right.changeColor()
+				// s右旋
+				rbt.leftRotate(s)
+				// continue
+				continue
+			}
+		}
+	}
+	n.color = black
 }
 
 func (rbt *RBTree[K, V]) precursor(n *node[K, V]) *node[K, V] {

@@ -316,9 +316,49 @@ func TestRBTreeDeleteCase3(t *testing.T) {
 	rbt.insert(13, 0)
 	rbt.insert(22, 0)
 	fmt.Println(String(rbt))
-	//
 	rbt.delete(20)
 	fmt.Println(String(rbt))
-	//rbt.delete(50)
-	//fmt.Println(String(rbt))
+	rbt.delete(50)
+	fmt.Println(String(rbt))
+}
+
+func TestRBTreeDeleteAdjustcase1_1(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	rbt.insert(20, 0)
+	rbt.insert(16, 0)
+	rbt.insert(24, 0)
+	rbt.insert(23, 0)
+	rbt.insert(25, 0)
+	rbt.insert(26, 0)
+	fmt.Println(String(rbt))
+	rbt.delete(26)
+	fmt.Println(String(rbt))
+
+	rbt.delete(24)
+	fmt.Println(String(rbt))
+}
+
+func TestRBTreeDeleteAdjustcase1_2(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	rbt.insert(20, 0)
+	rbt.insert(25, 0)
+	rbt.insert(10, 0)
+	rbt.insert(30, 0)
+	fmt.Println(String(rbt))
+
+	rbt.delete(10)
+	fmt.Println(String(rbt))
+}
+
+func TestRBTreeDeleteAdjustcase1_3(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	rbt.insert(20, 0)
+	rbt.insert(10, 0)
+
+	rbt.insert(30, 0)
+	rbt.insert(25, 0)
+	fmt.Println(String(rbt))
+
+	rbt.delete(20)
+	fmt.Println(String(rbt))
 }
