@@ -28,10 +28,6 @@ type printTree struct {
 	level int
 }
 
-type printRoot struct {
-	root *printTree
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -358,5 +354,30 @@ func TestRBTreeDeleteAdjustcase1_3(t *testing.T) {
 	fmt.Println(String(rbt))
 
 	rbt.delete(20)
+	fmt.Println(String(rbt))
+}
+
+func TestRBTreePutGetAndRemove(t *testing.T) {
+	rbt := NewRBTree[int, int]()
+	for i := 0; i < 100000; i++ {
+		rbt.Put(i, i+1)
+	}
+
+	for i := 0; i < 100000; i++ {
+		value, ok := rbt.Get(i)
+		if !ok {
+			t.Fatal("error")
+		}
+		if value != i+1 {
+			t.Fatalf("error value should equal %v, but get %v", i+1, value)
+		}
+	}
+
+	for i := 0; i < 99990; i++ {
+		remove := rbt.Remove(i)
+		if !remove {
+			t.Fatal("error")
+		}
+	}
 	fmt.Println(String(rbt))
 }

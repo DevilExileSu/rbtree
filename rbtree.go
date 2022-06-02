@@ -1,8 +1,8 @@
 package rbtree
 
 import (
-	"fmt"
 	"golang.org/x/exp/constraints"
+	"sync"
 )
 
 type color byte
@@ -23,6 +23,7 @@ type (
 	}
 
 	RBTree[K constraints.Ordered, V any] struct {
+		mu   sync.RWMutex
 		root *node[K, V]
 		size int
 		leaf *node[K, V]
@@ -87,6 +88,28 @@ func NewRBTree[K constraints.Ordered, V any]() *RBTree[K, V] {
 		black,
 	}
 	return rbt
+}
+
+func (rbt *RBTree[K, V]) Put(key K, value V) {
+	rbt.mu.Lock()
+	defer rbt.mu.Unlock()
+	rbt.insert(key, value)
+}
+
+func (rbt *RBTree[K, V]) Get(key K) (value V, ok bool) {
+	rbt.mu.RLock()
+	defer rbt.mu.RUnlock()
+	_, target := rbt.search(key)
+	if target != nil {
+		return target.value, true
+	}
+	return value, false
+}
+
+func (rbt *RBTree[K, V]) Remove(key K) bool {
+	rbt.mu.Lock()
+	defer rbt.mu.Unlock()
+	return rbt.delete(key)
 }
 
 func (rbt *RBTree[K, V]) createNode(key K, value V) *node[K, V] {
@@ -401,9 +424,9 @@ func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V]) {
 
 	for n != rbt.root && n.color == black {
 		s := n.getSibling()
-		fmt.Println("sibling", s)
+		//fmt.Println("sibling", s)
 		p := n.getParent()
-		fmt.Println("parent", p)
+		//fmt.Println("parent", p)
 		// 节点是左子节点
 		if p.left == n {
 			// case 2. 兄弟节点是红色
@@ -422,6 +445,8 @@ func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V]) {
 				p.color = red
 				// p左旋
 				rbt.leftRotate(p)
+				// 更新兄弟节点
+				s = n.getSibling()
 			}
 
 			// case 1.1 兄弟节点是黑色
@@ -493,6 +518,8 @@ func (rbt *RBTree[K, V]) deleteAdjust(n *node[K, V]) {
 				p.color = red
 				// p右旋
 				rbt.rightRotate(p)
+				// 更新兄弟节点
+				s = n.getSibling()
 			}
 
 			// 兄弟节点的子节点都是黑色
